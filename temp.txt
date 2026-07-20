@@ -1,0 +1,106 @@
+#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+
+    vector<string> text = {
+        "af", "p", "xpkcaqvnpk", "pfg", "af", "ipqe", "qpri", "gauuikifc", "tpw",
+        "ceiri", "udvk", "tiki", "afgarxifrphni", "cd",
+        "eao", "wvmd", "popkwn", "hiqpvri", "du", "ear", "jvaql",
+        "vfgikrcpfgafm", "du", "cei", "xkafqaxnir", "du",
+        "xrwqedearcdkw", "pfg", "du", "ear", "aopmafpcasi",
+        "xkdhafmr", "afcd", "fit", "pkipr", "ac", "tpr",
+        "qdoudkcafm", "cd", "ringdf", "eaorinu", "hiudki",
+        "cei", "opceiopcaqr", "du", "cei", "uaing", "qdvng",
+        "hi", "qdoxnicinw", "tdklig", "dvc", "pfg", "edt",
+        "rndtnw", "ac", "xkdqiigig", "pfg", "edt",
+        "odvfcpafdvr", "cei", "dhrcpqnir", "ceiki", "tdvng",
+        "pc", "niprc", "kiopaf", "dfi", "mddg", "oafg",
+        "cepc", "tdvng", "qdfcafvi", "cei", "kiripkqe"
+    };
+
+    map<char,int> mp;
+
+    // frequency count
+    for (auto &it : text) {
+        for (char c : it) {
+
+            if (isalpha((unsigned char)c))
+                mp[c]++;
+        }
+    }
+
+    vector<pair<int,char>> pr;
+
+    for (auto &it : mp) {
+        pr.push_back({it.second, it.first});
+    }
+
+    sort(pr.rbegin(), pr.rend());
+
+    string sorted = "etaoinshrdlcumwfgypbvkjxqz";
+
+    map<char,char> swp;
+
+    int idx = 0;
+
+    for (auto &it : pr) {
+
+        if (idx < sorted.size())
+            swp[it.second] = sorted[idx++];
+
+    }
+
+  
+        
+        swp['p']='a';
+        swp['i']='e';
+        swp['c']='t';
+        swp['d']='o';
+        swp['f']='n';
+        swp['k']='r';
+        swp['r']='s';
+        swp['a']='i';
+        swp['u']='f';
+        swp['e']='h';
+        swp['q']='c';
+        swp['n']='l';
+        swp['x']='p';
+        swp['v']='u';
+          swp['v']='u';
+          swp['g']='d';
+            swp['t']='w';
+              swp['o']='m';
+                swp['h']='b';
+                  swp['m']='g';
+                    swp['j']='q';
+                      swp['w']='y';
+                        swp['l']='k';
+                          swp['z']='z';
+                            swp['s']='v';
+                              swp['b']='x';
+    
+
+    cout << "===== OUTPUT =====\n\n";
+
+    for (int i = 0; i < (int)text.size(); i++) {
+
+        string word = text[i];
+
+        for (char &c : word) {
+
+            if (isalpha((unsigned char)c) && swp.count(c)) {
+
+                c = swp[c];
+
+            }
+        }
+
+        cout << setw(2) << i << ": "
+             << text[i]
+             << "  ->  "
+             << word << "\n";
+    }
+
+    return 0;
+}
