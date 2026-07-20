@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "dist",
+  "devCommand": "vite",
+  "env": {
+    "VITE_SOME_VAR": "@some_secret"
+  }
+}
