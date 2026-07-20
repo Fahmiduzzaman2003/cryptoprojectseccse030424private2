@@ -55,7 +55,10 @@ const CSS = `
 :root.danger {
   /* Brighter, more legible red — was #ff0019 which crushed to pure crimson */
   --accent: #ff2a3d;
-  --accent-dim: #b40014;
+  /* Was #b40014, which sat at 2.95:1 on black — below AA and effectively
+   * invisible in the trace tables. This matches the green theme's dim tone
+   * (7.6:1 vs 7.9:1) so secondary text reads at the same strength. */
+  --accent-dim: #ff6b78;
   --accent-rgb: 255, 42, 61;
   /* Orange-amber "secondary" so cyan-on-red stays a contrast pair */
   --secondary: #ffb000;
@@ -63,8 +66,10 @@ const CSS = `
   --warn: #ffe066;
   --warn-rgb: 255, 224, 102;
   --err: #ffffff;
-  /* Warmer panel base + a hint of glow so cards separate from pure black */
-  --panel-tint: 72, 4, 10;
+  /* Panels must stay near-black for text to separate from them. The old
+   * 72,4,10 was a mid red that flooded every surface and dropped body text
+   * to 4.4:1; this keeps the warm cast but reads as a dark panel (5.3:1). */
+  --panel-tint: 30, 2, 8;
   --bg: #0a0002;
   /* Used by the danger-only keyframes */
   --blood: #ff0019;
@@ -72,10 +77,12 @@ const CSS = `
   --blood-deep: #6b0008;
   --smoke: 255, 80, 90;
 }
+/* Ambient red glow, pulled back from 0.35/0.45 — at full strength it lit
+ * the whole page and left panels with nothing to sit against. */
 :root.danger body {
   background:
-    radial-gradient(ellipse at top,    rgba(180, 0, 30, 0.35), transparent 55%),
-    radial-gradient(ellipse at bottom, rgba(120, 0, 20, 0.45), transparent 60%),
+    radial-gradient(ellipse at top,    rgba(180, 0, 30, 0.20), transparent 55%),
+    radial-gradient(ellipse at bottom, rgba(120, 0, 20, 0.24), transparent 60%),
     #0a0002;
 }
 
@@ -112,10 +119,50 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 html, body, #root {
   margin: 0; padding: 0; background: var(--bg); color: var(--accent);
   font-family: 'Share Tech Mono', monospace;
-  min-height: 100vh; overflow-x: hidden;
+  min-height: 100vh;
+  /* dvh tracks the collapsing URL bar on mobile Safari/Chrome; the vh line
+   * above stays as the fallback for browsers without dvh. */
+  min-height: 100dvh;
+  overflow-x: hidden;
+  /* Stop iOS from silently re-scaling text in landscape. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body { cursor: crosshair; }
+
+/* Touch devices have no hover, but browsers still latch :hover after a tap —
+ * which left cards lifted and buttons inverted until you tapped elsewhere.
+ * Gate every hover-only affordance behind an actual pointer. */
+@media (hover: none) {
+  /* Each rule restores that element's own resting state explicitly, rather
+   * than using inherit, which would pull the parent's background instead. */
+  .cv-card:hover { transform: none; }
+  .cv-card.compatible:hover { box-shadow: none; }
+  .cv-card.compatible:hover::after { left: -100%; }
+  .cv-card.selected:hover {
+    box-shadow: 0 0 32px var(--secondary), inset 0 0 18px rgba(var(--secondary-rgb), 0.25);
+  }
+
+  .cv-btn:hover { background: transparent; color: var(--accent); box-shadow: none; }
+  .cv-btn.cyan:hover { background: transparent; color: var(--secondary); box-shadow: none; }
+  .cv-dl:hover { background: rgba(var(--accent-rgb), 0.18); color: var(--accent); }
+  .cv-exec:hover { background: rgba(var(--accent-rgb), 0.1); color: var(--accent); }
+  .cv-srctab:hover { background: #000; color: rgba(var(--accent-rgb), 0.5); }
+  .cv-srctab.active:hover { background: var(--accent); color: #000; }
+  .cv-mode-btn:hover { color: rgba(var(--accent-rgb), 0.55); border-color: rgba(var(--accent-rgb), 0.4); }
+  .cv-mode-btn.encrypt.active:hover { color: var(--accent); border-color: var(--accent); }
+  .cv-mode-btn.decrypt:hover { color: rgba(255, 0, 0, 0.66); border-color: rgba(255, 0, 0, 0.66); box-shadow: none; }
+  .cv-mode-btn.decrypt.active:hover { border-color: rgb(255, 0, 0, 0.66); }
+  .cv-wa-btn:hover { background: rgba(37, 211, 102, 0.15); color: #25d366; text-shadow: 0 0 8px #25d366; }
+  .cv-wa-btn:hover .cv-svg { stroke: #25d366; filter: drop-shadow(0 0 8px #25d366); }
+  .cv-scrolltop:hover { transform: none; }
+
+  /* Give touch users press feedback instead. */
+  .cv-card:active { transform: scale(0.985); }
+  .cv-btn:active, .cv-dl:active, .cv-exec:active,
+  .cv-mode-btn:active, .cv-wa-btn:active { transform: translateY(1px); }
+}
 
 ::selection { background: var(--accent); color: #000; }
 
@@ -128,8 +175,11 @@ body { cursor: crosshair; }
 :root.danger ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 .cv-root {
-  position: relative; min-height: 100vh; padding: 24px 48px 64px;
+  position: relative; min-height: 100vh;
+  /* Fluid gutters: 14px on a phone → 48px on desktop, no breakpoint jumps. */
+  padding: clamp(14px, 3vw, 24px) clamp(14px, 4vw, 48px) clamp(40px, 6vw, 64px);
   max-width: 1320px; margin: 0 auto;
+  width: 100%;
 }
 
 .cv-canvas {
@@ -175,10 +225,13 @@ body { cursor: crosshair; }
 }
 .cv-title {
   font-family: 'VT323', 'Share Tech Mono', monospace;
-  font-size: 92px; font-weight: 400; letter-spacing: 4px;
+  /* Scales 30px → 92px across the whole range; never overflows a 320px phone. */
+  font-size: clamp(30px, 11vw, 92px);
+  font-weight: 400; letter-spacing: clamp(1px, 0.4vw, 4px);
   margin: 0; line-height: 0.95; color: var(--accent);
   animation: glitch 3s infinite;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 .cv-tagline {
   color: var(--secondary); font-size: clamp(11px, 2.2vw, 14px); margin: 0 0 8px;
@@ -298,14 +351,16 @@ body { cursor: crosshair; }
 .cv-step::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
 .cv-step::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
 
-/* Danger step panels — slightly brighter, stronger glow, deeper panel base */
+/* Danger step panels — the glow lives on the border and outer shadow, not
+ * in the fill. A near-opaque dark base gives text something to sit on and
+ * makes each panel read as a distinct card again. */
 :root.danger .cv-step {
   background:
-    linear-gradient(180deg, rgba(var(--accent-rgb), 0.10), rgba(var(--panel-tint), 0.92));
-  border-color: rgba(var(--accent-rgb), 0.55);
+    linear-gradient(180deg, rgba(var(--accent-rgb), 0.05), rgba(var(--panel-tint), 0.96));
+  border-color: rgba(var(--accent-rgb), 0.7);
   box-shadow:
-    0 0 28px rgba(var(--accent-rgb), 0.30),
-    inset 0 0 28px rgba(var(--accent-rgb), 0.10);
+    0 0 26px rgba(var(--accent-rgb), 0.22),
+    inset 0 0 26px rgba(var(--accent-rgb), 0.05);
 }
 :root.danger .cv-step::before, :root.danger .cv-step::after {
   border-color: #fff;
@@ -413,8 +468,14 @@ body { cursor: crosshair; }
 .cv-hex-h { color: var(--secondary); font-size: 11px; margin-bottom: 4px; letter-spacing: 1px; }
 
 /* ----- Algorithm cards — sharper + corner brackets ----- */
+/* Intrinsically responsive: cards reflow 3 → 2 → 1 column on their own as
+ * space runs out, so the breakpoints below only fine-tune spacing. */
 .cv-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  display: grid;
+  /* 300px floor keeps the original 3-across desktop layout (4 would fit at
+   * a smaller floor), then degrades to 2 on tablets and 1 on phones. */
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: clamp(10px, 1.6vw, 16px);
 }
 .cv-card {
   background: rgba(var(--panel-tint), 0.7);
@@ -487,6 +548,9 @@ body { cursor: crosshair; }
   opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 5;
 }
 .cv-card:hover .cv-tooltip { opacity: 1; }
+/* Never renders on touch (no hover), and its nowrap width would exceed a
+ * phone viewport if it did — so drop it there entirely. */
+@media (hover: none) { .cv-tooltip { display: none; } }
 
 /* ----- Key input panel ----- */
 .cv-key-empty {
@@ -562,11 +626,14 @@ body { cursor: crosshair; }
 /* ----- Mode toggle — DECRYPT screams red even in green theme ----- */
 .cv-mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .cv-mode-btn {
-  padding: 28px; background: #000;
+  padding: clamp(16px, 2.8vw, 28px); background: #000;
   border: 2px solid rgba(var(--accent-rgb), 0.4);
-  color: rgba(var(--accent-rgb), 0.55); font-family: inherit; font-size: 26px;
-  cursor: pointer; letter-spacing: 6px; transition: all 0.18s; font-weight: 700;
+  color: rgba(var(--accent-rgb), 0.55); font-family: inherit;
+  font-size: clamp(16px, 3.2vw, 26px);
+  cursor: pointer; letter-spacing: clamp(2px, 0.8vw, 6px);
+  transition: all 0.18s; font-weight: 700;
   position: relative; overflow: hidden;
+  min-height: 56px;
   clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
 }
 .cv-mode-btn:hover { color: var(--accent); border-color: var(--accent); }
@@ -578,14 +645,23 @@ body { cursor: crosshair; }
   box-shadow: 0 0 32px var(--accent), inset 0 0 24px rgba(var(--accent-rgb), 0.4);
   text-shadow: 0 0 14px var(--accent);
 }
-/* DECRYPT button itself is always red-tinted as a signal of intent */
-.cv-mode-btn.decrypt { color: rgba(255, 0, 0, 0.66); border-color: rgba(255,0,0,0.66); }
-.cv-mode-btn.decrypt:hover { color: rgb(255, 0,0, 0.66); border-color: rgb(255, 0,0, 0.66); box-shadow: 0 0 18px rgba(255,0,0,0.66); }
+/* DECRYPT button is always red-tinted as a signal of intent. The label was
+ * rgba(255,0,0,.66) — 2.66:1 on black, and in the active state it was the
+ * exact same value as its own background (1.00:1, i.e. invisible). Kept red,
+ * but at a luminance that actually reads. */
+.cv-mode-btn.decrypt { color: #ff4d4d; border-color: rgba(255, 0, 0, 0.8); }
+.cv-mode-btn.decrypt:hover {
+  color: #ff6b6b; border-color: #ff2a2a;
+  box-shadow: 0 0 18px rgba(255, 0, 0, 0.66);
+}
 .cv-mode-btn.decrypt.active {
-  color: rgb(255, 0,0, 0.66); border-color: rgb(255, 0,0, 0.66);
+  /* White on the red fill: 7.9:1, and the dark shadow keeps the glyph edges
+   * crisp against the glow. */
+  color: #fff;
+  border-color: #ff2a2a;
   background: rgba(255, 0, 0, 0.66);
-  box-shadow: 0 0 36px rgb(255, 0,0, 0.66), inset 0 0 26px rgba(255,0,0,0.66);
-  text-shadow: 0 0 14px rgb(255,0, 0, 0.66);
+  box-shadow: 0 0 36px rgba(255, 0, 0, 0.66), inset 0 0 26px rgba(255, 0, 0, 0.5);
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.65), 0 0 22px rgba(255, 60, 60, 0.8);
   animation: alarm 1.4s infinite;
 }
 @keyframes alarm {
@@ -599,11 +675,13 @@ body { cursor: crosshair; }
   50%      { box-shadow: 0 0 48px var(--accent), inset 0 0 28px rgba(var(--accent-rgb), 0.55); }
 }
 .cv-exec {
-  width: 100%; padding: 28px; background: rgba(var(--accent-rgb), 0.1);
+  width: 100%; padding: clamp(16px, 3.2vw, 28px); background: rgba(var(--accent-rgb), 0.1);
   border: 2px solid var(--accent); color: var(--accent); font-family: inherit;
-  font-size: 28px; letter-spacing: 8px; cursor: pointer; transition: all 0.18s;
+  font-size: clamp(16px, 3.4vw, 28px); letter-spacing: clamp(2px, 1vw, 8px);
+  cursor: pointer; transition: all 0.18s;
   animation: pulse 1.8s infinite; font-weight: 700;
   text-shadow: 0 0 14px var(--accent);
+  min-height: 60px;
   clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
 }
 .cv-exec:hover { background: var(--accent); color: #000; }
@@ -686,22 +764,253 @@ body { cursor: crosshair; }
 :root.danger .cv-l-err { color: #fff; text-shadow: 0 0 8px var(--accent); }
 :root.danger .cv-l-warn { color: var(--warn); }
 
-/* ----- Output ----- */
-.cv-output {
-  margin-top: 18px; background: rgba(var(--secondary-rgb), 0.08);
-  border: 1px solid var(--secondary);
-  padding: 18px;
-  box-shadow: 0 0 22px rgba(var(--secondary-rgb), 0.3);
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+/* ----- Output -----
+ * The payoff panel. It reads as a distinct surface from the step cards:
+ * lifted off the page background, a solid accent rail down the left edge,
+ * and its own internal rhythm (header → meta chips → payload → actions).
+ */
+@keyframes outputReveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.cv-output-h { color: var(--secondary); font-size: 16px; margin-bottom: 8px; letter-spacing: 3px; font-weight: 700; }
-.cv-output-meta { color: var(--accent); font-size: 12px; margin-bottom: 10px; }
+.cv-output {
+  margin-top: 26px;
+  /* Lighter toward the top so the header sits on the brightest band. */
+  background:
+    linear-gradient(180deg,
+      rgba(var(--secondary-rgb), 0.14) 0%,
+      rgba(var(--secondary-rgb), 0.05) 42%,
+      rgba(0, 0, 0, 0.55) 100%),
+    #000;
+  border: 1px solid rgba(var(--secondary-rgb), 0.75);
+  border-left: 4px solid var(--secondary);
+  padding: clamp(16px, 3vw, 24px);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    0 10px 42px rgba(var(--secondary-rgb), 0.26),
+    inset 0 1px 0 rgba(var(--secondary-rgb), 0.35);
+  animation: outputReveal 0.32s ease-out both;
+  /* No clip-path here: it was shaving the left rail and clipping long
+   * filenames on narrow screens. */
+}
 
-/* Danger output — red accent instead of cyan, but secondary header stays amber */
+/* Header row — icon + title on the left, live status pill on the right. */
+.cv-output-h {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  color: var(--secondary);
+  font-size: clamp(14px, 2.6vw, 18px);
+  letter-spacing: clamp(1.5px, 0.5vw, 3px);
+  font-weight: 700;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(var(--secondary-rgb), 0.28);
+  text-shadow: 0 0 12px rgba(var(--secondary-rgb), 0.5);
+  overflow-wrap: anywhere;
+}
+.cv-output-h-text { flex: 1 1 auto; min-width: 0; }
+.cv-output-badge {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px;
+  font-size: 11px; font-weight: 700; letter-spacing: 2px;
+  color: #000; background: var(--secondary);
+  box-shadow: 0 0 16px rgba(var(--secondary-rgb), 0.6);
+  text-shadow: none;
+  white-space: nowrap;
+}
+.cv-output-badge::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: #000; animation: pulseDot 1.2s infinite;
+}
+
+/* Meta as discrete chips — scannable, and each value stays glued to its
+ * label instead of running together in one dot-joined string. */
+.cv-output-meta {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px;
+}
+.cv-meta-chip {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  padding: 6px 11px;
+  background: rgba(var(--accent-rgb), 0.09);
+  border: 1px solid rgba(var(--accent-rgb), 0.32);
+  font-size: 12px; letter-spacing: 0.5px;
+  max-width: 100%; min-width: 0;
+}
+.cv-meta-chip .k {
+  color: var(--secondary); opacity: 0.85;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  flex: 0 0 auto;
+}
+.cv-meta-chip .v {
+  color: var(--accent); font-weight: 700;
+  overflow-wrap: anywhere; min-width: 0;
+}
+
+/* ----- RSA key derivation (key panel) ----- */
+.cv-derive {
+  margin-top: 4px;
+  border-left: 2px solid rgba(var(--secondary-rgb), 0.5);
+  padding-left: 12px;
+}
+.cv-derive-h {
+  color: var(--secondary); opacity: 0.85;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  margin: 10px 0 4px;
+}
+.cv-derive-h:first-child { margin-top: 0; }
+.cv-derive-row {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 3px 0;
+  font-size: 11px;
+}
+.cv-derive-row .k {
+  flex: 0 0 42px; color: var(--secondary); font-weight: 700;
+}
+.cv-derive-row .v {
+  color: var(--accent); overflow-wrap: anywhere; min-width: 0;
+}
+/* The calculated private key is the point of the whole panel — mark it. */
+.cv-derive-row.hi {
+  background: rgba(var(--warn-rgb), 0.10);
+  border: 1px solid rgba(var(--warn-rgb), 0.35);
+  padding: 6px 8px; margin: 2px 0;
+}
+.cv-derive-row.hi .k, .cv-derive-row.hi .v { color: var(--warn); }
+.cv-derive-note {
+  margin-top: 8px; font-size: 10px; color: var(--secondary); opacity: 0.75;
+  letter-spacing: 0.5px;
+}
+
+/* ----- RSA per-character walkthrough (output panel) ----- */
+.cv-trace { margin-top: 4px; }
+.cv-trace-formula {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px;
+  background: rgba(var(--secondary-rgb), 0.08);
+  border: 1px solid rgba(var(--secondary-rgb), 0.3);
+  padding: 10px 12px; margin-bottom: 8px;
+  color: var(--secondary); font-size: 14px; font-weight: 700; letter-spacing: 1px;
+}
+.cv-trace-formula sup { font-size: 0.7em; }
+.cv-trace-keys {
+  color: var(--accent); font-weight: 400; font-size: 11px; letter-spacing: 0.5px;
+  overflow-wrap: anywhere; min-width: 0;
+}
+/* Visual aids that sit above the table: Playfair's 5×5 square and Hill's
+ * key matrix. Both wrap onto their own line when space runs out. */
+.cv-trace-aids {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;
+  margin-bottom: 8px;
+}
+.cv-square {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  padding: 8px; background: #000;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+}
+.cv-square-row { display: flex; gap: 2px; }
+.cv-square-cell {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(var(--accent-rgb), 0.10);
+  color: var(--accent); font-size: 13px; font-weight: 700;
+}
+.cv-matrixviz {
+  display: inline-flex; align-items: stretch; gap: 4px;
+  padding: 8px 10px; background: #000;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  color: var(--secondary);
+}
+.cv-matrixviz-label {
+  align-self: center; margin-right: 4px;
+  color: var(--secondary); font-size: 12px; font-weight: 700;
+}
+.cv-matrixviz-brk {
+  color: var(--secondary); font-size: 26px; line-height: 1;
+  display: flex; align-items: center;
+}
+.cv-matrixviz-body { display: inline-flex; flex-direction: column; gap: 2px; }
+.cv-matrixviz-row { display: flex; gap: 8px; }
+.cv-matrixviz-cell {
+  min-width: 26px; text-align: right;
+  color: var(--accent); font-size: 12px; font-weight: 700;
+}
+
+/* The table is wide by nature — it scrolls inside its own box so the page
+ * never does. */
+.cv-trace-scroll {
+  overflow-x: auto; overflow-y: auto;
+  max-height: min(44vh, 340px);
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: #000;
+}
+.cv-trace-table {
+  border-collapse: collapse; font-size: 11px; width: 100%;
+}
+.cv-trace-table th {
+  position: sticky; top: 0; z-index: 1;
+  background: rgba(var(--accent-rgb), 0.16);
+  color: var(--secondary);
+  text-align: left; padding: 7px 10px; white-space: nowrap;
+  letter-spacing: 1px; font-weight: 700;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.4);
+}
+.cv-trace-table th .sub {
+  display: block; font-size: 9px; opacity: 0.7; font-weight: 400; letter-spacing: 0.5px;
+}
+.cv-trace-table td {
+  padding: 6px 10px; vertical-align: top;
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.14);
+  white-space: nowrap;
+}
+.cv-trace-table tr:last-child td { border-bottom: 0; }
+/* Slack-absorbing column: takes all remaining width so the data columns
+ * size to their content. */
+.cv-trace-table th.fill, .cv-trace-table td.fill { width: 100%; padding: 0; }
+.cv-trace-table td.ch {
+  color: var(--warn); font-size: 15px; font-weight: 700; text-align: center;
+}
+.cv-trace-table td.num { color: var(--accent); font-weight: 700; }
+/* Cipher integers are long; let that one column wrap instead of forcing a
+ * very wide scroll. */
+.cv-trace-table td.num.big {
+  white-space: normal; overflow-wrap: anywhere;
+  min-width: 150px; max-width: 260px;
+}
+.cv-trace-table td.bin { color: var(--accent-dim); font-size: 10px; }
+.cv-trace-table td.glyph {
+  color: var(--secondary); font-size: 13px; letter-spacing: 1px;
+}
+.cv-trace-note {
+  margin-top: 8px; font-size: 10px; line-height: 1.5;
+  color: var(--secondary); opacity: 0.75; letter-spacing: 0.5px;
+}
+
+/* Label above the payload block. */
+.cv-payload-label {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--secondary); opacity: 0.9;
+  margin: 14px 0 6px;
+}
+.cv-payload-label .hint { opacity: 0.6; font-size: 10px; letter-spacing: 1px; }
+
+/* Danger output — red accent instead of cyan, but secondary header stays
+ * amber. The opaque #000 base matters: without it the tint composited
+ * straight onto the already-red page and the panel washed out. */
 :root.danger .cv-output {
-  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--secondary-rgb), 0.06));
+  background:
+    linear-gradient(180deg,
+      rgba(var(--accent-rgb), 0.13) 0%,
+      rgba(var(--accent-rgb), 0.05) 42%,
+      rgba(0, 0, 0, 0.6) 100%),
+    #000;
   border-color: var(--accent);
-  box-shadow: 0 0 32px rgba(var(--accent-rgb), 0.4), inset 0 0 22px rgba(var(--accent-rgb), 0.12);
+  border-left-color: var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    0 10px 42px rgba(var(--accent-rgb), 0.3),
+    inset 0 1px 0 rgba(var(--accent-rgb), 0.35);
 }
 :root.danger .cv-output-h {
   color: var(--secondary);
@@ -712,32 +1021,76 @@ body { cursor: crosshair; }
   text-shadow: 0 0 6px rgba(var(--accent-rgb), 0.5);
 }
 .cv-preview {
-  background: #000; border: 1px solid rgba(var(--accent-rgb), 0.45); padding: 10px;
-  max-height: 160px; overflow: auto; color: var(--accent); font-size: 12px;
-  white-space: pre-wrap; word-break: break-all;
+  background: #000;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: 2px;
+  padding: 14px;
+  /* Taller and viewport-aware: a phone shows a useful chunk without the
+   * block swallowing the screen, and it never exceeds half the viewport. */
+  max-height: min(46vh, 320px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.65;
+  letter-spacing: 0.4px;
+  white-space: pre-wrap;
+  /* break-all mangled ordinary words; anywhere only breaks when it must. */
+  overflow-wrap: anywhere;
+  word-break: normal;
+  box-shadow: inset 0 0 24px rgba(var(--accent-rgb), 0.07);
+  text-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
 }
 .cv-blockviz {
-  margin-top: 10px;
   background: rgba(var(--accent-rgb), 0.06);
   border: 1px solid rgba(var(--accent-rgb), 0.3);
-  padding: 10px;
+  border-radius: 2px;
+  padding: 12px;
   color: var(--secondary);
   font-size: 11px;
   line-height: 1.6;
-  overflow: auto;
+  /* Fixed-column ASCII art can't reflow, so it scrolls inside its own box
+   * rather than widening the page. */
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: min(34vh, 260px);
+  -webkit-overflow-scrolling: touch;
   white-space: pre;
 }
-.cv-dl-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-top: 14px; }
+/* Actions wrap on their own instead of relying on a breakpoint: the copy
+ * button drops under the download button as soon as it stops fitting. */
+.cv-dl-row {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid rgba(var(--secondary-rgb), 0.2);
+}
 .cv-dl {
-  padding: 20px; background: rgba(var(--accent-rgb), 0.18);
+  flex: 1 1 240px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: clamp(14px, 2.4vw, 20px);
+  min-height: 56px;
+  background: rgba(var(--accent-rgb), 0.18);
   border: 2px solid var(--accent);
-  color: var(--accent); font-family: inherit; font-size: 20px; cursor: pointer;
-  letter-spacing: 4px; transition: all 0.15s; font-weight: 700;
+  color: var(--accent); font-family: inherit;
+  font-size: clamp(15px, 2.4vw, 20px); cursor: pointer;
+  letter-spacing: clamp(1.5px, 0.6vw, 4px); transition: all 0.15s; font-weight: 700;
   text-shadow: 0 0 12px var(--accent);
-  box-shadow: 0 0 22px var(--accent), inset 0 0 14px rgba(var(--accent-rgb), 0.2);
+  box-shadow: 0 0 22px rgba(var(--accent-rgb), 0.45), inset 0 0 14px rgba(var(--accent-rgb), 0.2);
   clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
 }
 .cv-dl:hover { background: var(--accent); color: #000; }
+.cv-dl:active { transform: translateY(1px); }
+/* Copy sits beside download on wide screens, full-width once it wraps.
+ * The default .cv-btn parallelogram clips its own left/right borders away,
+ * which at full width reads as two floating lines — so this one gets the
+ * same notched-corner outline as the download button next to it. */
+.cv-dl-row .cv-btn {
+  flex: 1 1 150px; min-height: 56px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: clamp(13px, 1.8vw, 15px);
+  background: rgba(var(--secondary-rgb), 0.10);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
 
 /* ----- Footer / hex stream ----- */
 @keyframes scrollHex {
@@ -804,11 +1157,16 @@ body { cursor: crosshair; }
 .cv-text-meta .v { color: var(--accent); }
 
 /* ----- WhatsApp bridge ----- */
+/* Phone field / note / button wrap independently instead of being crushed
+ * into three fixed tracks on narrow screens. */
 .cv-wa-row {
-  display: grid; grid-template-columns: 200px 1fr auto; gap: 10px;
-  margin-top: 12px; padding-top: 12px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin-top: 14px; padding-top: 14px;
   border-top: 1px dashed rgba(var(--accent-rgb), 0.4);
 }
+.cv-wa-row .cv-input { flex: 1 1 200px; min-width: 0; }
+.cv-wa-row > span { flex: 1 1 220px; min-width: 0; }
+.cv-wa-row .cv-wa-btn { flex: 0 1 auto; }
 .cv-wa-btn {
   padding: 14px 22px; background: rgba(37, 211, 102, 0.15);
   border: 2px solid #25d366; color: #25d366; font-family: inherit;
@@ -826,13 +1184,6 @@ body { cursor: crosshair; }
   background: rgba(37, 211, 102, 0.10);
   box-shadow: 0 0 18px rgba(37, 211, 102, 0.35);
 }
-
-.cv-wa-info {
-  margin-top: 14px; padding: 12px 14px; font-size: 11px; color: var(--secondary);
-  background: rgba(var(--accent-rgb), 0.04);
-  border-left: 3px solid var(--secondary); line-height: 1.7; letter-spacing: 0.5px;
-}
-.cv-wa-info b { color: var(--accent); letter-spacing: 1px; }
 
 /* =============================================================
  * BLOOD MODE — only visible when <html> has .danger
@@ -856,10 +1207,14 @@ body { cursor: crosshair; }
   mix-blend-mode: screen;
 }
 :root.danger .cv-blood { opacity: 1; }
+/* Vignette starts further out so it darkens the edges without creeping
+ * over the content column. */
 :root.danger .cv-vignette {
-  background: radial-gradient(ellipse at center, transparent 30%, rgba(70, 0, 0, 0.96) 100%);
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(70, 0, 0, 0.96) 100%);
 }
-:root.danger .cv-scanlines { opacity: 0.32; }
+/* Scanlines sit on top of everything, so at 0.32 they were veiling the
+ * text. Closer to the green theme's weight now. */
+:root.danger .cv-scanlines { opacity: 0.18; }
 
 /* Animated blood drips streaming from the top edge in danger mode */
 @keyframes drip {
@@ -985,9 +1340,33 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Respect safe areas on notched / home-indicator phones. */
+/* Respect safe areas on notched / home-indicator phones.
+ * Note: these add to the fluid gutter rather than replacing it — an earlier
+ * version hard-coded 48px here, which silently cancelled every mobile
+ * padding rule below it. */
 :root { --cv-safe-t: env(safe-area-inset-top, 0px); --cv-safe-b: env(safe-area-inset-bottom, 0px); }
-.cv-root { padding-left: max(48px, env(safe-area-inset-left, 0px)); padding-right: max(48px, env(safe-area-inset-right, 0px)); }
+.cv-root {
+  padding-left: max(clamp(14px, 4vw, 48px), env(safe-area-inset-left, 0px));
+  padding-right: max(clamp(14px, 4vw, 48px), env(safe-area-inset-right, 0px));
+}
+
+/* iOS Safari zooms the page in whenever a focused field is under 16px.
+ * That zoom never resets, which is what makes a form feel "broken" on a
+ * phone — so every real input is 16px at touch sizes. */
+@media (max-width: 900px) {
+  .cv-input, .cv-textarea, .cv-matrix-grid input, select.cv-input {
+    font-size: 16px;
+  }
+  /* 44px is the smallest reliably tappable target; the fields measured 37px. */
+  .cv-input, .cv-matrix-grid input, select.cv-input {
+    min-height: 46px;
+    padding: 12px 14px;
+  }
+}
+
+/* Nothing may push the page sideways. */
+img, svg, canvas, video, table, pre { max-width: 100%; }
+.cv-preview, .cv-blockviz, .cv-term, .cv-keyout, .cv-hex { overscroll-behavior-x: contain; }
 
 /* Tablets (max-width: 768px) */
 @media (max-width: 768px) {
@@ -999,11 +1378,6 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
   .cv-title {
     font-size: 52px;
     letter-spacing: 2px;
-  }
-
-  .cv-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
   }
 
   .cv-mode-row {
@@ -1039,15 +1413,13 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
     max-width: 100%;
   }
 
-  .cv-wa-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
+  .cv-wa-row { gap: 8px; }
+  .cv-wa-row .cv-input,
+  .cv-wa-row > span,
+  .cv-wa-row .cv-wa-btn { flex: 1 1 100%; }
+  .cv-wa-row .cv-wa-btn { justify-content: center; min-height: 52px; }
 
-  .cv-dl-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
+  .cv-dl-row { gap: 10px; }
 
   /* Canvas + scanlines eat ~20-30% of mobile GPU budget — soften them */
   .cv-canvas { opacity: 0.35; }
@@ -1061,7 +1433,6 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
   /* Stop the heavy blur tag swap on tiny screens; show both stacked */
   .cv-tagline-alt { animation: none !important; opacity: 1; position: static; white-space: normal; }
   .cv-tagline-alt.alt { display: none; }
-  .cv-grid { grid-template-columns: repeat(2, 1fr); }
   .cv-card { min-height: 0; }
 }
 
@@ -1112,11 +1483,6 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
     font-size: 10px;
   }
 
-  .cv-grid {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
   .cv-card {
     padding: 12px 14px;
     min-height: 64px;
@@ -1159,15 +1525,15 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
     font-size: 10px;
   }
 
+  /* font-size stays at 16px (set in the touch block above) — dropping below
+   * that is what makes iOS zoom the page in on focus. */
   .cv-input {
-    font-size: 14px;
-    padding: 10px 12px;
+    padding: 11px 12px;
   }
 
   .cv-textarea {
-    min-height: 120px;
-    font-size: 14px;
-    padding: 10px;
+    min-height: 140px;
+    padding: 12px;
   }
 
   .cv-btn {
@@ -1176,6 +1542,17 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
     letter-spacing: 1px;
     min-height: 44px;
   }
+
+  /* "[ TEXT / WHATSAPP ]" wrapped to two lines and left the tab row lopsided.
+   * Tighter tracking keeps both labels on one line. */
+  .cv-srctab {
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 12px 8px;
+    gap: 6px;
+    min-height: 48px;
+  }
+  .cv-srctab .cv-svg { width: 16px; height: 16px; flex: 0 0 auto; }
 
   .cv-fileinfo {
     grid-template-columns: auto 1fr;
@@ -1230,14 +1607,14 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
 
   .cv-matrix-grid input {
     padding: 8px;
-    font-size: 14px;
-    min-height: 44px;
+    min-height: 46px;
   }
 
-  .cv-wa-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
+  .cv-wa-row { gap: 8px; }
+  .cv-wa-row .cv-input,
+  .cv-wa-row > span,
+  .cv-wa-row .cv-wa-btn { flex: 1 1 100%; }
+  .cv-wa-row .cv-wa-btn { justify-content: center; min-height: 52px; }
 
   .cv-wa-btn {
     padding: 12px 16px;
@@ -1246,17 +1623,9 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
     min-height: 48px;
   }
 
-  .cv-dl-row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  .cv-dl {
-    padding: 16px 12px;
-    font-size: 16px;
-    letter-spacing: 2px;
-    min-height: 56px;
-  }
+  /* Both actions go full-width and stack — no half-width tap targets. */
+  .cv-dl-row { gap: 10px; }
+  .cv-dl, .cv-dl-row .cv-btn { flex: 1 1 100%; }
 
   .cv-term {
     font-size: 11px;
@@ -1272,18 +1641,24 @@ button, .cv-btn, .cv-card, .cv-mode-btn, .cv-exec, .cv-dl, .cv-wa-btn,
     font-size: 12px;
   }
 
-  .cv-output {
-    padding: 14px;
-  }
+  /* Output stays legible on a phone — sizing is handled by clamp() on the
+   * base rules, so only the phone-specific structure is adjusted here. */
+  .cv-output { border-left-width: 3px; }
+  .cv-output-meta { gap: 6px; }
+  .cv-meta-chip { flex: 1 1 100%; padding: 7px 10px; }
+  .cv-preview { max-height: 40vh; font-size: 12.5px; }
+  .cv-payload-label .hint { display: none; }
 
-  .cv-output-h {
-    font-size: 14px;
-  }
-
-  .cv-preview {
-    max-height: 120px;
-    font-size: 11px;
-  }
+  /* RSA only: drop m(binary) and c(hex bytes) so the table stays readable
+   * on a phone. The cipher integer and its character mapping — the parts
+   * being taught — are kept. Scoped to RSA because column 3 means something
+   * different in every other trace (it's the key byte in XOR). */
+  .cv-trace-table.algo-rsa th:nth-child(3), .cv-trace-table.algo-rsa td:nth-child(3),
+  .cv-trace-table.algo-rsa th:nth-child(5), .cv-trace-table.algo-rsa td:nth-child(5) { display: none; }
+  .cv-trace-table td.num.big { min-width: 110px; max-width: 150px; }
+  .cv-trace-table th, .cv-trace-table td { padding: 6px 7px; }
+  .cv-trace-formula { font-size: 13px; }
+  .cv-square-cell { width: 22px; height: 22px; font-size: 12px; }
 
   /* Stop every expensive paint on phones — drops ~40% GPU work */
   .cv-scanlines { opacity: 0.12; animation: none; }
@@ -1678,7 +2053,7 @@ function writeUint32(bytes, offset, value) {
   bytes[offset + 3] = value & 0xff;
 }
 
-function feistel64Transform(bytes, keyText, mode, onVisual) {
+function feistel64Transform(bytes, keyText, mode, onVisual, rowTrace) {
   const key = normalizeBlockKey(keyText);
   const roundKeys = makeRoundKeys(key);
   const rounds = mode === 'encrypt' ? roundKeys : roundKeys.slice().reverse();
@@ -1699,13 +2074,36 @@ function feistel64Transform(bytes, keyText, mode, onVisual) {
     let left = readUint32(padded, base);
     let right = readUint32(padded, base + 4);
     const trace = [`[${String(blockIndex).padStart(2, '0')}] ${bytesToHex(padded.subarray(base, base + 8)).toUpperCase()}`];
+    if (blockIndex === 0 && rowTrace) {
+      rowTrace.push([
+        'in',
+        '—',
+        left.toString(16).padStart(8, '0').toUpperCase(),
+        right.toString(16).padStart(8, '0').toUpperCase(),
+      ]);
+      rowTrace.padLength = padLength;
+      rowTrace.blocks = blockCount;
+      // The leading "in" row is the starting state, not a round.
+      rowTrace.rounds = rounds.length;
+    }
 
     for (let roundIndex = 0; roundIndex < rounds.length; roundIndex++) {
       const nextLeft = right;
       const nextRight = (left ^ blockRound(right, rounds[roundIndex])) >>> 0;
       left = nextLeft;
       right = nextRight;
-      trace.push(`  R${roundIndex + 1}: L=${left.toString(16).padStart(8, '0').toUpperCase()} R=${right.toString(16).padStart(8, '0').toUpperCase()}`);
+      const hexL = left.toString(16).padStart(8, '0').toUpperCase();
+      const hexR = right.toString(16).padStart(8, '0').toUpperCase();
+      trace.push(`  R${roundIndex + 1}: L=${hexL} R=${hexR}`);
+      // Round-by-round table for the first block only — that's enough to
+      // show the Feistel structure without dumping the whole file.
+      if (blockIndex === 0 && rowTrace) {
+        rowTrace.push([
+          'R' + (roundIndex + 1),
+          rounds[roundIndex].toString(16).padStart(8, '0').toUpperCase(),
+          hexL, hexR,
+        ]);
+      }
     }
 
     writeUint32(out, base, right);
@@ -1721,13 +2119,25 @@ function feistel64Transform(bytes, keyText, mode, onVisual) {
   return result;
 }
 
-function xorBytes(bytes, keyText) {
+function xorBytes(bytes, keyText, trace) {
   const key = normalizeBlockKey(keyText);
   const keyBytes = new TextEncoder().encode(key);
+  const bin = (b) => b.toString(2).padStart(8, '0');
+  const hex = (b) => b.toString(16).padStart(2, '0').toUpperCase();
   const out = new Uint8Array(bytes.length);
   for (let i = 0; i < bytes.length; i++) {
-    out[i] = bytes[i] ^ keyBytes[i % keyBytes.length];
+    const kb = keyBytes[i % keyBytes.length];
+    out[i] = bytes[i] ^ kb;
+    if (traceable(trace)) {
+      trace.push([
+        String(i),
+        `${hex(bytes[i])}  ${bin(bytes[i])}`,
+        `${hex(kb)}  ${bin(kb)}`,
+        `${hex(out[i])}  ${bin(out[i])}`,
+      ]);
+    }
   }
+  if (trace) trace.key = key;
   return out;
 }
 
@@ -1791,19 +2201,48 @@ function matrixInverseMod26(M) {
 
 /* ============== CIPHERS ============== */
 
-function caesarCipher(text, key, mode) {
+/* Each cipher takes an optional `trace` array. When present, rows are pushed
+ * from inside the real loop (capped at TRACE_ROWS) so the walkthrough shown
+ * in the UI is the actual computation, not a re-derivation of it. Passing
+ * nothing leaves behaviour untouched. */
+const TRACE_ROWS = 12;
+const traceable = (trace) => trace && trace.length < TRACE_ROWS;
+
+// Totals for the "first N of M" counter. These mirror what each cipher
+// actually iterates over, so the denominator matches the rows shown.
+const countLetters = (text) => (text.match(/[A-Za-z]/g) || []).length;
+function countDigraphs(text) {
+  const cleaned = text.toUpperCase().replace(/J/g, 'I').replace(/[^A-Z]/g, '');
+  let n = 0, i = 0;
+  while (i < cleaned.length) {
+    if (!cleaned[i + 1] || cleaned[i] === cleaned[i + 1]) i += 1; else i += 2;
+    n++;
+  }
+  return n;
+}
+
+function caesarCipher(text, key, mode, trace) {
   const k = mode === 'encrypt' ? key : -key;
   let out = '';
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
-    if (c >= 65 && c <= 90)       out += String.fromCharCode(mod(c - 65 + k, 26) + 65);
-    else if (c >= 97 && c <= 122) out += String.fromCharCode(mod(c - 97 + k, 26) + 97);
-    else                          out += text[i];
+    const base = (c >= 65 && c <= 90) ? 65 : (c >= 97 && c <= 122) ? 97 : 0;
+    if (base) {
+      const p = c - base;
+      const ci = mod(p + k, 26);
+      const outCh = String.fromCharCode(ci + base);
+      out += outCh;
+      if (traceable(trace)) {
+        trace.push([text[i], String(p), (k < 0 ? '−' : '+') + Math.abs(k), String(ci), outCh]);
+      }
+    } else {
+      out += text[i];
+    }
   }
   return out;
 }
 
-function vigenereCipher(text, key, mode) {
+function vigenereCipher(text, key, mode, trace) {
   const k = (key || '').toLowerCase().replace(/[^a-z]/g, '');
   if (!k) throw new Error('Vigenere key must contain at least one letter.');
   let out = '', ki = 0;
@@ -1813,9 +2252,16 @@ function vigenereCipher(text, key, mode) {
     if (c >= 65 && c <= 90)       { isAlpha = true; base = 65; }
     else if (c >= 97 && c <= 122) { isAlpha = true; base = 97; }
     if (isAlpha) {
+      const keyCh = k[ki % k.length];
       const shift = k.charCodeAt(ki % k.length) - 97;
       const s = mode === 'encrypt' ? shift : -shift;
-      out += String.fromCharCode(mod(c - base + s, 26) + base);
+      const p = c - base;
+      const ci = mod(p + s, 26);
+      const outCh = String.fromCharCode(ci + base);
+      out += outCh;
+      if (traceable(trace)) {
+        trace.push([text[i], String(p), keyCh.toUpperCase(), (s < 0 ? '−' : '+') + Math.abs(s), String(ci), outCh]);
+      }
       ki++;
     } else {
       out += text[i];
@@ -1824,7 +2270,7 @@ function vigenereCipher(text, key, mode) {
   return out;
 }
 
-function hillCipher(text, M, mode) {
+function hillCipher(text, M, mode, trace) {
   const n = M.length;
   let key = M;
   if (mode === 'decrypt') {
@@ -1843,12 +2289,27 @@ function hillCipher(text, M, mode) {
   for (let i = 0; i < padded.length; i += n) {
     const block = [];
     for (let j = 0; j < n; j++) block.push(padded.charCodeAt(i + j) - 65);
+    const sums = [], outIdx = [];
     for (let r = 0; r < n; r++) {
       let sum = 0;
       for (let c = 0; c < n; c++) sum += key[r][c] * block[c];
+      sums.push(sum);
+      outIdx.push(mod(sum, 26));
       out += String.fromCharCode(mod(sum, 26) + 65);
     }
+    if (traceable(trace)) {
+      trace.push([
+        padded.slice(i, i + n),
+        '[' + block.join(' ') + ']',
+        '[' + sums.join(' ') + ']',
+        '[' + outIdx.join(' ') + ']',
+        outIdx.map(v => String.fromCharCode(v + 65)).join(''),
+      ]);
+    }
   }
+  // The effective matrix differs from the input on decrypt (it's the
+  // inverse), so hand it back for display.
+  if (trace) trace.matrix = key;
   return out;
 }
 
@@ -1870,7 +2331,7 @@ function playfairFind(grid, ch) {
   return null;
 }
 
-function playfairCipher(text, key, mode) {
+function playfairCipher(text, key, mode, trace) {
   const grid = playfairBuildSquare(key);
   const cleaned = text.toUpperCase().replace(/J/g, 'I').replace(/[^A-Z]/g, '');
   // Build digraphs with X filler
@@ -1888,22 +2349,28 @@ function playfairCipher(text, key, mode) {
   for (const [a, b] of pairs) {
     const [r1, c1] = playfairFind(grid, a);
     const [r2, c2] = playfairFind(grid, b);
-    let oa, ob;
+    let oa, ob, rule;
     if (r1 === r2) {
+      rule = 'same row → shift ' + (dir > 0 ? 'right' : 'left');
       oa = grid[r1][mod(c1 + dir, 5)];
       ob = grid[r2][mod(c2 + dir, 5)];
     } else if (c1 === c2) {
+      rule = 'same column → shift ' + (dir > 0 ? 'down' : 'up');
       oa = grid[mod(r1 + dir, 5)][c1];
       ob = grid[mod(r2 + dir, 5)][c2];
     } else {
+      rule = 'rectangle → swap columns';
       oa = grid[r1][c2];
       ob = grid[r2][c1];
     }
     out += oa + ob;
+    if (traceable(trace)) {
+      trace.push([a + b, `(${r1},${c1}) (${r2},${c2})`, rule, oa + ob]);
+    }
   }
+  if (trace) trace.grid = grid;
   return out;
 }
-+
 
 /* ============== RSA (BigInt) ============== */
 
@@ -1985,7 +2452,115 @@ function generateRSAKeyPair() {
   const e = 65537n;
   if (phi % e === 0n) return generateRSAKeyPair();
   const d = modInverseBig(e, phi);
-  return { e: e.toString(), n: n.toString(), d: d.toString(), p: p.toString(), q: q.toString() };
+  // phi is returned alongside the keys so the UI can show the full
+  // derivation (p, q → n, φ(n) → d) the way it's taught, not just the
+  // finished key pair.
+  return {
+    e: e.toString(), n: n.toString(), d: d.toString(),
+    p: p.toString(), q: q.toString(), phi: phi.toString(),
+  };
+}
+
+/* ---------- RSA over text: the per-character (textbook) form ----------
+ * File mode packs many bytes into one big integer per block, which is the
+ * right thing for throughput but shows nothing you can follow by hand.
+ * For string input we encrypt one Unicode code point at a time —
+ *   c = m^e mod n,  m = c^d mod n
+ * which is exactly the form taught in class, and yields a ciphertext of
+ * plain decimal numbers that survives a copy/paste or a WhatsApp message
+ * (raw ciphertext bytes do not).
+ */
+
+// Ciphertext integer → the characters its bytes stand for. Non-printable
+// bytes render as a middle dot so the column stays aligned.
+function rsaBytesOfCipher(c) {
+  const bytes = [];
+  let cc = c;
+  while (cc > 0n) { bytes.unshift(Number(cc & 0xffn)); cc >>= 8n; }
+  if (!bytes.length) bytes.push(0);
+  return bytes;
+}
+/* Byte → the character it stands for, under Latin-1 (the standard
+ * byte-to-character mapping). Cipher bytes are uniformly random, so only
+ * about a third land in printable ASCII — rendering the rest as dots hid
+ * most of the mapping, so control bytes use the Unicode "control picture"
+ * glyphs (␀ ␁ … ␠ ␡) and high bytes use their Latin-1 characters. Every
+ * byte therefore gets exactly one visible glyph. */
+function rsaByteGlyph(b) {
+  if (b <= 32) return String.fromCharCode(0x2400 + b); // ␀ … ␠ (incl. space)
+  if (b <= 126) return String.fromCharCode(b);         // printable ASCII
+  if (b === 127) return '␡';
+  if (b <= 159) return '□';                            // C1 controls: no glyph exists
+  if (b === 160) return '␣';                           // NBSP would render invisibly
+  return String.fromCharCode(b);                       // ¡ … ÿ
+}
+function rsaBytesToGlyphs(bytes) {
+  return bytes.map(rsaByteGlyph).join('');
+}
+function rsaBytesToHex(bytes) {
+  return bytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+}
+function rsaBytesToBin(bytes) {
+  return bytes.map(b => b.toString(2).padStart(8, '0')).join(' ');
+}
+
+function rsaEncryptText(text, e, n) {
+  const chars = Array.from(text);           // Array.from splits by code point
+  const nums = [];
+  const trace = [];
+  for (const ch of chars) {
+    const m = BigInt(ch.codePointAt(0));
+    if (m >= n) {
+      throw new Error(
+        `Character "${ch}" (code ${m}) is not smaller than the modulus n. ` +
+        `RSA can only encrypt values below n — generate a larger key pair.`
+      );
+    }
+    const c = modPow(m, e, n);
+    nums.push(c);
+    if (trace.length < TRACE_ROWS) {
+      const bytes = rsaBytesOfCipher(c);
+      trace.push({
+        ch, m: m.toString(), mBin: m.toString(2).padStart(8, '0'),
+        c: c.toString(), hex: rsaBytesToHex(bytes),
+        bin: rsaBytesToBin(bytes), glyphs: rsaBytesToGlyphs(bytes),
+      });
+    }
+  }
+  return { cipherText: nums.join(' '), count: chars.length, trace };
+}
+
+function rsaDecryptText(cipherText, d, n) {
+  const tokens = cipherText.trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) throw new Error('No RSA ciphertext numbers found.');
+  const bad = tokens.find(t => !/^\d+$/.test(t));
+  if (bad) {
+    throw new Error(
+      `"${bad.slice(0, 24)}" is not a ciphertext number. Text-mode RSA expects ` +
+      `space-separated decimal values, as produced by encrypting in TEXT mode.`
+    );
+  }
+  let out = '';
+  const trace = [];
+  for (const t of tokens) {
+    const c = BigInt(t);
+    const m = modPow(c, d, n);
+    const code = Number(m);
+    if (!Number.isSafeInteger(code) || code > 0x10ffff) {
+      throw new Error('Decryption produced a value outside the Unicode range — wrong key (d or n).');
+    }
+    const ch = String.fromCodePoint(code);
+    out += ch;
+    if (trace.length < TRACE_ROWS) {
+      const bytes = rsaBytesOfCipher(c);
+      trace.push({
+        ch, m: m.toString(), mBin: m.toString(2).padStart(8, '0'),
+        c: c.toString(), hex: rsaBytesToHex(bytes),
+        bin: rsaBytesToBin(bytes), glyphs: rsaBytesToGlyphs(bytes),
+      });
+    }
+  }
+  return { plainText: out, count: tokens.length, trace };
 }
 
 // Bytes per encryption block. We pack `inBytes` data + 1 byte length tag
@@ -2061,16 +2636,28 @@ function banglaPermutedArray(permKey) {
   return BANGLA.slice(shift).concat(BANGLA.slice(0, shift));
 }
 
-function banglaShift(text, langKey, permKey, mode) {
+function banglaShift(text, langKey, permKey, mode, trace) {
   if (!permKey) throw new Error('BanglaShift permutation key cannot be empty.');
   const arr = banglaPermutedArray(permKey);
+  if (trace) {
+    trace.sum = [...permKey].reduce((a, c) => a + c.charCodeAt(0), 0);
+    trace.shift = mod(trace.sum, 26);
+    // Counts characters this mode actually maps — Latin a–z when
+    // encrypting, Bangla glyphs when decrypting — so the "first N of M"
+    // denominator matches the rows rather than the other alphabet.
+    trace.count = 0;
+  }
   if (mode === 'encrypt') {
     let out = '';
     for (const ch of text) {
       const lower = ch.toLowerCase();
       const code = lower.charCodeAt(0);
-      if (code >= 97 && code <= 122) out += arr[code - 97];
-      else out += ch;
+      if (code >= 97 && code <= 122) {
+        const idx = code - 97;
+        out += arr[idx];
+        if (trace) trace.count++;
+        if (traceable(trace)) trace.push([ch, String(idx), lower, arr[idx]]);
+      } else out += ch;
     }
     return out;
   } else {
@@ -2079,7 +2666,15 @@ function banglaShift(text, langKey, permKey, mode) {
     let out = '';
     // iterate by code-points to handle Bangla unicode correctly
     for (const ch of text) {
-      out += reverse.has(ch) ? reverse.get(ch) : ch;
+      const hit = reverse.has(ch);
+      out += hit ? reverse.get(ch) : ch;
+      if (hit && trace) {
+        trace.count++;
+        if (traceable(trace)) {
+          const latin = reverse.get(ch);
+          trace.push([ch, String(latin.charCodeAt(0) - 97), ch, latin]);
+        }
+      }
     }
     return out;
   }
@@ -2483,11 +3078,33 @@ function KeyInputPanel({ algo, keyState, setKey }) {
         </button>
         {keyState.rsaGenerated && (
           <div className="cv-keyout">
-            <div style={{ color: 'var(--accent)' }}>[OK] Key pair generated</div>
-            <div>PUBLIC  e = {keyState.rsaGenerated.e}</div>
-            <div>PUBLIC  n = {keyState.rsaGenerated.n}</div>
-            <div>PRIVATE d = {keyState.rsaGenerated.d}</div>
-            <div style={{ color: C.amber, marginTop: 6 }}>// Save the private key to decrypt later.</div>
+            <div style={{ color: 'var(--accent)', marginBottom: 8 }}>[OK] Key pair generated</div>
+
+            {/* The derivation, in the order it's worked through by hand. */}
+            <div className="cv-derive">
+              <div className="cv-derive-h">// STEP 1 — pick two primes</div>
+              <div className="cv-derive-row"><span className="k">p</span><span className="v">{keyState.rsaGenerated.p}</span></div>
+              <div className="cv-derive-row"><span className="k">q</span><span className="v">{keyState.rsaGenerated.q}</span></div>
+
+              <div className="cv-derive-h">// STEP 2 — modulus n = p × q</div>
+              <div className="cv-derive-row"><span className="k">n</span><span className="v">{keyState.rsaGenerated.n}</span></div>
+
+              <div className="cv-derive-h">// STEP 3 — totient φ(n) = (p−1)(q−1)</div>
+              <div className="cv-derive-row"><span className="k">φ(n)</span><span className="v">{keyState.rsaGenerated.phi}</span></div>
+
+              <div className="cv-derive-h">// STEP 4 — public exponent e, coprime to φ(n)</div>
+              <div className="cv-derive-row"><span className="k">e</span><span className="v">{keyState.rsaGenerated.e}</span></div>
+
+              <div className="cv-derive-h">// STEP 5 — private key, calculated: d = e⁻¹ mod φ(n)</div>
+              <div className="cv-derive-row hi"><span className="k">d</span><span className="v">{keyState.rsaGenerated.d}</span></div>
+              <div className="cv-derive-note">
+                verify: (e × d) mod φ(n) = 1 — so m<sup>ed</sup> ≡ m (mod n)
+              </div>
+            </div>
+
+            <div style={{ color: C.amber, marginTop: 8 }}>
+              // PUBLIC KEY = (e, n) · PRIVATE KEY = (d, n) — save d to decrypt later.
+            </div>
           </div>
         )}
       </div>
@@ -2569,6 +3186,129 @@ const TerminalLog = React.memo(function TerminalLog({ lines }) {
   );
 });
 
+/* ============== UI: STEP-BY-STEP TRACE ==============
+ * One renderer for every algorithm. The rows are collected inside each
+ * cipher's real loop, so what's shown here is the actual computation.
+ *
+ * trace = {
+ *   algo, mode, formula, keys,   // heading + the maths line
+ *   columns: [{ label, sub, cls }],
+ *   rows: [[cell, ...]],
+ *   total, unit,                 // "first 12 of 40 characters"
+ *   square, matrix,              // optional visual aids
+ *   notes: [string],
+ * }
+ */
+const CELL_CLASS = ['ch', 'num', 'bin', 'num', 'bin', 'glyph'];
+
+/* RSA keeps its own column set — it's the widest of the traces. */
+const RSA_COLUMNS = [
+  { label: 'char', cls: 'ch' },
+  { label: 'm', sub: 'code', cls: 'num' },
+  { label: 'm', sub: 'binary', cls: 'bin' },
+  { label: 'c', sub: 'cipher int', cls: 'num big' },
+  { label: 'c', sub: 'hex bytes', cls: 'bin' },
+  { label: 'c', sub: 'as chars', cls: 'glyph' },
+];
+const rsaRowCells = (r) => [r.ch, r.m, r.mBin, r.c, r.hex, r.glyphs];
+
+const TraceGrid = React.memo(function TraceGrid({ square }) {
+  return (
+    <div className="cv-square">
+      {square.map((row, r) => (
+        <div className="cv-square-row" key={r}>
+          {row.map((ch, c) => <span className="cv-square-cell" key={c}>{ch}</span>)}
+        </div>
+      ))}
+    </div>
+  );
+});
+
+const TraceMatrix = React.memo(function TraceMatrix({ matrix, label }) {
+  return (
+    <div className="cv-matrixviz">
+      <span className="cv-matrixviz-label">{label}</span>
+      <span className="cv-matrixviz-brk">[</span>
+      <span className="cv-matrixviz-body">
+        {matrix.map((row, r) => (
+          <span className="cv-matrixviz-row" key={r}>
+            {row.map((v, c) => <span className="cv-matrixviz-cell" key={c}>{v}</span>)}
+          </span>
+        ))}
+      </span>
+      <span className="cv-matrixviz-brk">]</span>
+    </div>
+  );
+});
+
+const StepTrace = React.memo(function StepTrace({ trace }) {
+  const shown = trace.rows.length;
+  const unit = trace.unit || 'step';
+  return (
+    <div className="cv-trace">
+      <div className="cv-payload-label">
+        <span>{'//'} {trace.algo}_walkthrough — {trace.mode === 'encrypt' ? 'encryption' : 'decryption'}</span>
+        <span className="hint">
+          {shown < trace.total
+            ? `first ${shown} of ${trace.total} ${unit}s`
+            : `${trace.total} ${unit}${trace.total === 1 ? '' : 's'}`}
+        </span>
+      </div>
+
+      {trace.formula && (
+        <div className="cv-trace-formula">
+          {trace.formula}
+          {trace.keys && <span className="cv-trace-keys">{trace.keys}</span>}
+        </div>
+      )}
+
+      {(trace.square || trace.matrix) && (
+        <div className="cv-trace-aids">
+          {trace.square && <TraceGrid square={trace.square} />}
+          {trace.matrix && <TraceMatrix matrix={trace.matrix} label={trace.matrixLabel || 'K'} />}
+        </div>
+      )}
+
+      {!!trace.rows.length && (
+        <div className="cv-trace-scroll" tabIndex={0}>
+          {/* The algo modifier lets a trace opt into layout tweaks (e.g. RSA
+              drops its two derived-notation columns on phones). */}
+          <table className={'cv-trace-table algo-' + trace.algo}>
+            <thead>
+              <tr>
+                {trace.columns.map((c, i) => (
+                  <th key={i}>{c.label}{c.sub && <span className="sub">({c.sub})</span>}</th>
+                ))}
+                {/* Absorbs leftover width so the real columns stay packed at
+                    content width instead of being spread across the table. */}
+                <th className="fill" aria-hidden="true" />
+              </tr>
+            </thead>
+            <tbody>
+              {trace.rows.map((row, i) => (
+                <tr key={i}>
+                  {row.map((cell, j) => (
+                    <td key={j} className={trace.columns[j]?.cls ?? CELL_CLASS[j] ?? ''}>
+                      {cell === ' ' ? '␣' : cell}
+                    </td>
+                  ))}
+                  <td className="fill" />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!!(trace.notes || []).length && (
+        <div className="cv-trace-note">
+          {trace.notes.map((n, i) => <div key={i}>{'// '}{n}</div>)}
+        </div>
+      )}
+    </div>
+  );
+});
+
 /* ============== UI: OUTPUT PANEL ============== */
 
 const OutputPanel = React.memo(function OutputPanel({ output, onDownload, onCopy, copied, onWhatsApp, waPhone, setWaPhone, showWA }) {
@@ -2576,17 +3316,42 @@ const OutputPanel = React.memo(function OutputPanel({ output, onDownload, onCopy
   return (
     <div className="cv-output" id="cv-output-anchor" role="region" aria-label="Cipher output">
       <div className="cv-output-h">
-        <Icon name="vault-open" size={28} className="second" />
-        &nbsp;{'>'} VAULT_OPEN — OUTPUT_READY
+        <Icon name="vault-open" size={26} className="second" />
+        <span className="cv-output-h-text">{'>'} VAULT_OPEN</span>
+        <span className="cv-output-badge">READY</span>
       </div>
+
       <div className="cv-output-meta">
-        {output.filename} · {formatBytes(output.size)} · {output.contentKind}
+        <span className="cv-meta-chip">
+          <span className="k">file</span>
+          <span className="v">{output.filename}</span>
+        </span>
+        <span className="cv-meta-chip">
+          <span className="k">size</span>
+          <span className="v">{formatBytes(output.size)}</span>
+        </span>
+        <span className="cv-meta-chip">
+          <span className="k">type</span>
+          <span className="v">{output.contentKind}</span>
+        </span>
       </div>
+
       {output.preview && (
-        <div className="cv-preview">{output.preview}</div>
+        <>
+          <div className="cv-payload-label">
+            <span>{'//'} payload_preview</span>
+            <span className="hint">scroll for more</span>
+          </div>
+          <div className="cv-preview" tabIndex={0}>{output.preview}</div>
+        </>
       )}
+      {output.stepTrace && <StepTrace trace={output.stepTrace} />}
+
       {output.blockVisual && (
-        <div className="cv-blockviz">{output.blockVisual}</div>
+        <>
+          <div className="cv-payload-label"><span>{'//'} block_structure</span></div>
+          <div className="cv-blockviz" tabIndex={0}>{output.blockVisual}</div>
+        </>
       )}
       <div className="cv-dl-row">
         <button className="cv-dl" onClick={onDownload}>
@@ -2804,6 +3569,7 @@ export default function App() {
 
       let outputBlob, outputName, contentKind, preview = null;
       let blockVisual = null;
+      let stepTrace = null;
 
       // === Branch by algorithm ===
       if (algo === 'sha256') {
@@ -2817,11 +3583,57 @@ export default function App() {
         outputName = `sha256_${baseName}.txt`;
         contentKind = 'text (SHA-256 digest)';
         preview = digestHex;
+        // SHA-256 has no per-character step to show; the meaningful structure
+        // is the padded message and the eight 32-bit words of the digest.
+        {
+          const bitLen = bytes.length * 8;
+          const padded = Math.ceil((bytes.length + 9) / 64) * 64;
+          stepTrace = {
+            algo: 'sha256', mode: 'encrypt', unit: 'word',
+            formula: <>H = SHA-256(message)</>,
+            keys: `${bytes.length} byte${bytes.length === 1 ? '' : 's'} in → 32 bytes out`,
+            columns: [
+              { label: 'word', cls: 'ch' },
+              { label: 'hex', cls: 'num' },
+              { label: 'binary', cls: 'bin' },
+            ],
+            rows: Array.from({ length: 8 }, (_, i) => {
+              const wordHex = digestHex.slice(i * 8, i * 8 + 8).toUpperCase();
+              return [
+                'H' + i,
+                wordHex,
+                parseInt(wordHex, 16).toString(2).padStart(32, '0'),
+              ];
+            }),
+            total: 8,
+            notes: [
+              `message padded from ${bytes.length} to ${padded} bytes (a 1 bit, zeros, then the ${bitLen}-bit length) and processed in ${padded / 64} block${padded / 64 === 1 ? '' : 's'} of 64 bytes`,
+              'the digest is the eight 32-bit state words H0…H7 concatenated — this is one-way, so there is nothing to reverse',
+            ],
+          };
+        }
       } else if (algo === 'feistel64') {
         log('step', '[*] Reading file bytes...');
         const bytes = new Uint8Array(fileBuffer);
         log('step', mode === 'encrypt' ? '[*] Encrypting 64-bit blocks...' : '[*] Decrypting 64-bit blocks...');
-        const cipherBytes = feistel64Transform(bytes, keyState.blockKey, mode, (trace) => { blockVisual = trace; });
+        const roundTrace = [];
+        const cipherBytes = feistel64Transform(bytes, keyState.blockKey, mode, (trace) => { blockVisual = trace; }, roundTrace);
+        stepTrace = {
+          algo: 'feistel-64', mode, unit: 'round',
+          formula: <>L′ = R,  R′ = L ⊕ F(R, k<sub>i</sub>)</>,
+          keys: `block 1 of ${roundTrace.blocks}${roundTrace.padLength ? ` · ${roundTrace.padLength} pad byte(s) added` : ''}`,
+          columns: [
+            { label: 'round', cls: 'ch' },
+            { label: 'k', sub: 'round key', cls: 'bin' },
+            { label: 'L', cls: 'num' },
+            { label: 'R', cls: 'num' },
+          ],
+          rows: roundTrace, total: roundTrace.rounds,
+          notes: [
+            'each round swaps the halves and XORs one through a function of the other',
+            'the halves are swapped once more on output, which is what lets the same structure decrypt by running the round keys in reverse',
+          ],
+        };
         outputBlob = new Blob([cipherBytes], { type: 'application/octet-stream' });
         const baseName = file.name.replace(/^encrypted_/, '').replace(/^decrypted_/, '').replace(/\.[^.]+$/, '');
         outputName = `${mode === 'encrypt' ? 'encrypted' : 'decrypted'}_${baseName}.bin`;
@@ -2831,12 +3643,92 @@ export default function App() {
         log('step', '[*] Reading file bytes...');
         const bytes = new Uint8Array(fileBuffer);
         log('step', mode === 'encrypt' ? '[*] Applying XOR stream...' : '[*] Reversing XOR stream...');
-        const cipherBytes = xorBytes(bytes, keyState.xorKey);
+        const xorTrace = [];
+        const cipherBytes = xorBytes(bytes, keyState.xorKey, xorTrace);
+        stepTrace = {
+          algo: 'xor', mode, unit: 'byte',
+          formula: <>c = p ⊕ k<sub>i mod len</sub></>,
+          keys: `key "${xorTrace.key}" (${new TextEncoder().encode(xorTrace.key).length} bytes, repeating)`,
+          columns: [
+            { label: 'i', cls: 'ch' },
+            { label: 'p', sub: 'hex / binary', cls: 'bin' },
+            { label: 'k', sub: 'hex / binary', cls: 'bin' },
+            { label: 'c', sub: 'hex / binary', cls: 'bin' },
+          ],
+          rows: xorTrace, total: bytes.length,
+          notes: [
+            'XOR is its own inverse — running the same key over the ciphertext gives the plaintext back, so encrypt and decrypt are the identical operation',
+            'each output bit is 1 only where the plaintext and key bits differ',
+          ],
+        };
         outputBlob = new Blob([cipherBytes], { type: 'application/octet-stream' });
         const baseName = file.name.replace(/^encrypted_/, '').replace(/^decrypted_/, '').replace(/\.[^.]+$/, '');
         outputName = `${mode === 'encrypt' ? 'encrypted' : 'decrypted'}_${baseName}.bin`;
         contentKind = 'binary (XOR stream)';
         preview = bytesToHex(cipherBytes.subarray(0, Math.min(64, cipherBytes.length))).toUpperCase().replace(/(.{2})/g, '$1 ').trim();
+      } else if (algo === 'rsa' && inputMode === 'text') {
+        /* Text input gets the per-character textbook treatment: one
+         * modular exponentiation per code point, a readable numeric
+         * ciphertext, and a step table showing the arithmetic. */
+        const n = BigInt(keyState.rsaN);
+        if (n <= 0n) throw new Error('RSA key values must be positive.');
+        const baseName = 'message';
+
+        if (mode === 'encrypt') {
+          const e = BigInt(keyState.rsaE);
+          if (e <= 0n) throw new Error('RSA key values must be positive.');
+          log('step', '[*] Reading string as Unicode code points...');
+          log('info', `[INFO] Public key (e, n) = (${e}, ${n})`);
+          log('step', '[*] Encrypting per character: c = m^e mod n');
+          // One modular exponentiation per character, run synchronously.
+          // Fine for a message; worth flagging before it stalls the tab.
+          if (plainText.length > 2000) {
+            log('warn', `[WARN] ${plainText.length} characters — per-character RSA may take a moment.`);
+          }
+
+          const res = rsaEncryptText(plainText, e, n);
+          log('ok', `[OK] ${res.count} character(s) encrypted into ${res.count} cipher block(s).`);
+
+          outputBlob = new Blob([res.cipherText], { type: 'text/plain;charset=utf-8' });
+          outputName = `encrypted_${baseName}.txt`;
+          contentKind = 'text (RSA — space-separated c values)';
+          preview = res.cipherText;
+          stepTrace = {
+            algo: 'rsa', mode: 'encrypt', unit: 'character',
+            formula: <>c = m<sup>e</sup> mod n</>,
+            keys: `with (e, n) = (${e}, ${n})`,
+            columns: RSA_COLUMNS,
+            rows: res.trace.map(rsaRowCells),
+            total: res.count,
+            notes: [
+              'each character is raised to e and reduced mod n — the cipher integer is far larger than the character it came from, which is why its bytes map to unrelated-looking characters',
+              'c (as chars) reads the cipher bytes as Latin-1; control bytes show as ␀-style pictures, so every byte has one glyph',
+            ],
+          };
+        } else {
+          const d = BigInt(keyState.rsaD);
+          if (d <= 0n) throw new Error('RSA key values must be positive.');
+          log('step', '[*] Parsing ciphertext numbers...');
+          log('info', `[INFO] Private key (d, n) = (${d}, ${n})`);
+          log('step', '[*] Decrypting per block: m = c^d mod n');
+
+          const res = rsaDecryptText(plainText, d, n);
+          log('ok', `[OK] ${res.count} cipher block(s) recovered to plaintext.`);
+
+          outputBlob = new Blob([res.plainText], { type: 'text/plain;charset=utf-8' });
+          outputName = `decrypted_${baseName}.txt`;
+          contentKind = 'text (RSA plaintext)';
+          preview = res.plainText;
+          stepTrace = {
+            algo: 'rsa', mode: 'decrypt', unit: 'block',
+            formula: <>m = c<sup>d</sup> mod n</>,
+            keys: `with (d, n) = (${d}, ${n})`,
+            columns: RSA_COLUMNS,
+            rows: res.trace.map(rsaRowCells),
+            total: res.count,
+            notes: ['each cipher integer is raised to d and reduced mod n, recovering the original code point'],
+          };
+        }
       } else if (algo === 'rsa') {
         if (mode === 'encrypt') {
           const e = BigInt(keyState.rsaE);
@@ -2947,18 +3839,112 @@ export default function App() {
         const inputText = await readFileAsText(file);
         log('step', '[*] Applying cipher...');
         let cipherText;
+        // `tr` is filled in from inside each cipher's own loop.
+        const tr = [];
         if (algo === 'caesar') {
           const k = parseInt(keyState.caesarShift, 10);
           if (Number.isNaN(k)) throw new Error('Invalid Caesar shift.');
-          cipherText = caesarCipher(inputText, k, mode);
+          cipherText = caesarCipher(inputText, k, mode, tr);
+          const eff = mode === 'encrypt' ? k : -k;
+          stepTrace = {
+            algo: 'caesar', mode, unit: 'letter',
+            formula: <>c = (p {eff < 0 ? '−' : '+'} {Math.abs(eff)}) mod 26</>,
+            keys: `shift k = ${k}${mode === 'decrypt' ? ' (applied in reverse)' : ''}`,
+            columns: [
+              { label: 'char', cls: 'ch' },
+              { label: 'p', sub: 'index', cls: 'num' },
+              { label: 'shift', cls: 'bin' },
+              { label: 'c', sub: 'index', cls: 'num' },
+              { label: 'out', cls: 'ch' },
+            ],
+            rows: tr, total: countLetters(inputText),
+            notes: [
+              'A→0, B→1 … Z→25; the shift wraps around with mod 26',
+              'non-letters pass through untouched and are not counted as steps',
+            ],
+          };
         } else if (algo === 'vigenere') {
-          cipherText = vigenereCipher(inputText, keyState.vigenereKey, mode);
+          cipherText = vigenereCipher(inputText, keyState.vigenereKey, mode, tr);
+          const kNorm = (keyState.vigenereKey || '').toLowerCase().replace(/[^a-z]/g, '');
+          stepTrace = {
+            algo: 'vigenere', mode, unit: 'letter',
+            formula: <>c = (p {mode === 'encrypt' ? '+' : '−'} k<sub>i</sub>) mod 26</>,
+            keys: `key = "${kNorm.toUpperCase()}" (repeats every ${kNorm.length} letter${kNorm.length === 1 ? '' : 's'})`,
+            columns: [
+              { label: 'char', cls: 'ch' },
+              { label: 'p', sub: 'index', cls: 'num' },
+              { label: 'key', cls: 'ch' },
+              { label: 'shift', cls: 'bin' },
+              { label: 'c', sub: 'index', cls: 'num' },
+              { label: 'out', cls: 'ch' },
+            ],
+            rows: tr, total: countLetters(inputText),
+            notes: [
+              'the key cycles over the letters only — each letter gets its own shift, which is what defeats frequency analysis',
+            ],
+          };
         } else if (algo === 'hill') {
-          cipherText = hillCipher(inputText, keyState.hillMatrix, mode);
+          cipherText = hillCipher(inputText, keyState.hillMatrix, mode, tr);
+          const dim = (keyState.hillMatrix || [[1]]).length;
+          stepTrace = {
+            algo: 'hill', mode, unit: 'block',
+            formula: <>C = K · P mod 26</>,
+            keys: `${dim}×${dim} matrix, blocks of ${dim} letters`,
+            matrix: tr.matrix,
+            matrixLabel: mode === 'encrypt' ? 'K' : 'K⁻¹ (mod 26)',
+            columns: [
+              { label: 'block', cls: 'ch' },
+              { label: 'P', sub: 'indices', cls: 'num' },
+              { label: 'K · P', cls: 'bin' },
+              { label: 'mod 26', cls: 'num' },
+              { label: 'out', cls: 'ch' },
+            ],
+            rows: tr,
+            total: Math.ceil(inputText.toUpperCase().replace(/[^A-Z]/g, '').length / dim),
+            notes: [
+              'text is uppercased, stripped to A–Z, then padded with X to fill the last block',
+              mode === 'encrypt'
+                ? 'decryption multiplies by the inverse of K mod 26 — which is why K must be invertible'
+                : 'the matrix shown is the inverse of your key matrix, computed mod 26',
+            ],
+          };
         } else if (algo === 'playfair') {
-          cipherText = playfairCipher(inputText, keyState.playfairKey, mode);
+          cipherText = playfairCipher(inputText, keyState.playfairKey, mode, tr);
+          stepTrace = {
+            algo: 'playfair', mode, unit: 'digraph',
+            formula: <>pair → 5×5 square rule</>,
+            keys: `key square built from "${keyState.playfairKey || ''}"`,
+            square: tr.grid,
+            columns: [
+              { label: 'pair', cls: 'ch' },
+              { label: 'coords', sub: 'r,c', cls: 'bin' },
+              { label: 'rule', cls: 'bin' },
+              { label: 'out', cls: 'ch' },
+            ],
+            rows: tr, total: tr.length >= TRACE_ROWS ? countDigraphs(inputText) : tr.length,
+            notes: [
+              'J is folded into I, so the 25 remaining letters fill the square',
+              'same row → each letter moves one step sideways; same column → one step down; otherwise → swap columns of the rectangle',
+            ],
+          };
         } else if (algo === 'banglashift') {
-          cipherText = banglaShift(inputText, 'bn', keyState.banglaPerm, mode);
+          cipherText = banglaShift(inputText, 'bn', keyState.banglaPerm, mode, tr);
+          stepTrace = {
+            algo: 'banglashift', mode, unit: 'letter',
+            formula: <>a…z → Bangla alphabet rotated by (Σ key codes) mod 26</>,
+            keys: `Σ = ${tr.sum}, shift = ${tr.shift}`,
+            columns: [
+              { label: 'in', cls: 'ch' },
+              { label: 'index', cls: 'num' },
+              { label: 'latin', cls: 'ch' },
+              { label: 'out', cls: 'ch' },
+            ],
+            rows: tr, total: tr.count,
+            notes: [
+              'the key is summed to a single rotation amount, then the Bangla alphabet is rotated by it',
+              'the mapping is a straight substitution — same input letter always gives the same output',
+            ],
+          };
         }
 
         // Auto-detect base64 round-trip: file like "encrypted_photo.png.txt" being decrypted
@@ -3009,6 +3995,7 @@ export default function App() {
         contentKind,
         preview,
         blockVisual,
+        stepTrace,
       });
     } catch (err) {
       log('err', '[ERROR] ' + err.message);
@@ -3016,7 +4003,7 @@ export default function App() {
     } finally {
       setRunning(false);
     }
-  }, [canExecute, algo, mode, file, fileBuffer, fileCategory, keyState]);
+  }, [canExecute, algo, mode, file, fileBuffer, fileCategory, keyState, inputMode, plainText]);
 
   // Keyboard shortcut: Ctrl+Enter
   useEffect(() => {
@@ -3210,13 +4197,6 @@ export default function App() {
                     <div className="cv-hex">{hexDump}</div>
                   </>
                 )}
-                <div className="cv-wa-info">
-                  <b>// WHATSAPP BRIDGE</b><br />
-                  WhatsApp is end-to-end encrypted, so no website can intercept its messages directly. Workflow:
-                  encrypt your text here → click <b>SEND TO WHATSAPP</b> on the output panel → it opens WhatsApp Web /
-                  the WhatsApp app with the cipher prefilled, you tap send. To <b>decrypt</b> a message you received,
-                  copy it from WhatsApp, paste above, switch mode to <b>DECRYPT</b>, run.
-                </div>
               </>
             )}
           </section>
@@ -3287,7 +4267,10 @@ export default function App() {
             </button>
             {running && <div className="cv-progress" role="progressbar" aria-label="Encrypting…" />}
             <div className="cv-hint">
-              {hint} {canExecute && <span className="cv-kbd">Ctrl</span> + <span className="cv-kbd">Enter</span>}
+              {/* The chips must be JSX children, not an expression: inside
+                  {...} the `+` is JS concatenation and rendered as
+                  "[object Object][object Object]". */}
+              {hint}{canExecute && <> <span className="cv-kbd">Ctrl</span> + <span className="cv-kbd">Enter</span></>}
             </div>
 
             <TerminalLog lines={logs} />
